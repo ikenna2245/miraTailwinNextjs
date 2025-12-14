@@ -1,15 +1,23 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabaseClient';
 import { Resend } from 'resend';
+import { z } from 'zod'; // 1. Import Zod
 
 // Initialize Resend
 const resend = new Resend(process.env.RESEND_API_KEY);
-
-// ADMIN EMAIL (Your Inbox)
-const ADMIN_EMAIL = 'info@mirabytes.io'; 
-
-// --- THE MAGIC LOGO STRING (Base64 Encoded SVG) ---
+const ADMIN_EMAIL = 'info@mirabytes.io';
 const LOGO_BASE64 = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB4PSIyIiB5PSIyIiB3aWR0aD0iMzYiIGhlaWdodD0iMzYiIHJ4PSI4IiBmaWxsPSJyZ2JhKDM3LDk5LDIzNSwwLjIpIiBzdHJva2U9InJnYmEoNTksMTMwLDI0NiwwLjUpIiBzdHJva2Utd2lkdGg9IjEiLz48cGF0aCBkPSJNMTIgMjhWMTJMMjAgMjBMMjggMTJWMjgiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iMi41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIyIiBmaWxsPSIjMjJkM2VlIi8+PGNpcmNsZSBjeD0iMjgiIGN5PSIxMiIgcj0iMiIgZmlsbD0iIzIyZDNlZSIvPjxjaXJjbGUgY3g9IjIwIiBjeT0iMjAiIHI9IjIiIGZpbGw9IiM2MGE1ZmEiLz48Y2lyY2xlIGN4PSIxMiIgY3k9IjI4IiByPSIyIiBmaWxsPSIjYzA4NGZjIi8+PGNpcmNsZSBjeD0iMjgiIGN5PSIyOCIgcj0iMiIgZmlsbD0iI2MwODRmYyIvPjxwYXRoIGQ9Ik0yMCAyMFYyOCIgc3Ryb2tlPSIjYTc4YmZhIiBzdHJva2Utd2lkdGg9IjEuNSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+PC9zdmc+";
+
+// 2. Define Validation Schema
+const bookingSchema = z.object({
+  name: z.string().min(2, "Name is too short").max(100),
+  email: z.string().email("Invalid email address"),
+  company: z.string().max(100).optional().or(z.literal('')),
+  subject: z.string().min(2).max(150),
+  message: z.string().max(2000).optional().or(z.literal('')), // Limit message length
+  date: z.string().optional(),
+  time: z.string().optional(),
+});
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -29,26 +37,34 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    console.log("1. Processing submission for:", body.email);
+    const rawBody = await request.json();
+    
+    // 3. Validate Inputs
+    const validation = bookingSchema.safeParse(rawBody);
+    
+    if (!validation.success) {
+        console.error("Validation Error:", validation.error);
+        return NextResponse.json({ success: false, message: "Invalid input data." }, { status: 400 });
+    }
+
+    const body = validation.data;
+    console.log("Processing submission for:", body.email);
 
     // --- LOGIC: Determine Submission Type ---
-    // If 'time' exists and looks like a slot (e.g. "09:00 AM"), it's a Booking.
-    // Otherwise, it's a Lead (Resource Download).
     const isBooking = body.time && (body.time.includes('AM') || body.time.includes('PM'));
     const entryType = isBooking ? 'Strategy Session' : 'Resource Request';
 
-    // Fallbacks for DB (Leads don't select a date, so we use "Today")
+    // Fallbacks
     const dbDate = body.date || new Date().toISOString().split('T')[0];
     const dbTime = body.time || 'Lead-Capture'; 
 
-    // --- 1. Insert into Supabase ---
+    // --- 4. Insert into Supabase ---
     const { error } = await supabase
       .from('bookings')
       .insert([{
         name: body.name,
         email: body.email,
-        company: body.company,
+        company: body.company || null,
         subject: body.subject,
         message: body.message || `Lead Source: ${entryType}`,
         booking_date: dbDate,
@@ -62,10 +78,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, message: error.message }, { status: 500 });
     }
 
-    // --- 2. Email Automation (Resend Only) ---
+    // --- 5. Email Automation ---
     if (process.env.RESEND_API_KEY) {
         
-        // A. ADMIN EMAIL (To You)
+        // A. ADMIN EMAIL
         await resend.emails.send({
             from: 'Mirabytes System <info@mirabytes.io>',
             to: ADMIN_EMAIL, 
@@ -83,10 +99,8 @@ export async function POST(request: Request) {
                     .logo-text { color: white; font-size: 26px; font-weight: 800; text-decoration: none; display: inline-block; vertical-align: middle; }
                     .logo-dot { color: #60a5fa; }
                     .content { padding: 40px 32px; }
-                    /* Dynamic Badge Color: Green for Booking, Blue for Lead */
                     .badge { background-color: ${isBooking ? '#22c55e' : '#3b82f6'}; color: white; font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 4px 8px; border-radius: 4px; display: inline-block; margin-bottom: 12px; letter-spacing: 1px; }
                     .h1 { color: #0f172a; font-size: 22px; font-weight: 700; margin: 0 0 24px 0; }
-                    
                     .data-row { display: flex; border-bottom: 1px solid #f1f5f9; padding: 12px 0; }
                     .data-label { width: 120px; font-weight: 600; color: #64748b; font-size: 13px; text-transform: uppercase; }
                     .data-value { flex: 1; color: #0f172a; font-size: 15px; font-weight: 500; }
@@ -136,36 +150,14 @@ export async function POST(request: Request) {
             `
         });
 
-        // B. CLIENT EMAIL (To User)
-        // Dynamic Subject & Content based on type
+        // B. CLIENT EMAIL
         const userSubject = isBooking ? 'Confirmed: Your Strategy Session' : 'Received: Your Request for Information';
-        
-        // This block decides what the "Card" in the email shows
         const cardContentHtml = isBooking 
-            ? `
-                <div style="margin-bottom: 16px;">
-                    <div class="card-label">Date</div>
-                    <div class="card-value">${body.date}</div>
-                </div>
-                <div style="margin-bottom: 16px;">
-                    <div class="card-label">Time</div>
-                    <div class="card-value">${body.time} (GMT)</div>
-                </div>
-                <div>
-                    <div class="card-label">Next Steps</div>
-                    <div class="card-value">A follow-up meeting invite will be sent shortly.</div>
-                </div>
-              `
-            : `
-                <div style="margin-bottom: 16px;">
-                    <div class="card-label">Resource Requested</div>
-                    <div class="card-value">${body.subject}</div>
-                </div>
-                <div>
-                    <div class="card-label">Status</div>
-                    <div class="card-value">Request Received. We will email the materials shortly.</div>
-                </div>
-              `;
+            ? `<div style="margin-bottom: 16px;"><div class="card-label">Date</div><div class="card-value">${body.date}</div></div>
+               <div style="margin-bottom: 16px;"><div class="card-label">Time</div><div class="card-value">${body.time} (GMT)</div></div>
+               <div><div class="card-label">Next Steps</div><div class="card-value">A follow-up meeting invite will be sent shortly.</div></div>`
+            : `<div style="margin-bottom: 16px;"><div class="card-label">Resource Requested</div><div class="card-value">${body.subject}</div></div>
+               <div><div class="card-label">Status</div><div class="card-value">Request Received. We will email the materials shortly.</div></div>`;
 
         await resend.emails.send({
             from: 'Mirabytes Consulting <info@mirabytes.io>', 
