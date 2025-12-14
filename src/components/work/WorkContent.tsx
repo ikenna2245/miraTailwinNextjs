@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Folder, X, Maximize2, Code2, 
   Database, Layout, BarChart3, Briefcase, 
-  Search, ChevronLeft, ChevronRight, ChevronDown, CheckCircle2 
+  Search, ChevronLeft, ChevronRight, ChevronDown, CheckCircle2, MessageSquare
 } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
