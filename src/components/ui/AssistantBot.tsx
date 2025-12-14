@@ -146,31 +146,58 @@ export const AssistantBot = () => {
   const pathname = usePathname();
   const router = useRouter();
 
-  // --- HELPER: Parse Markdown-like Formatting ---
+  // --- HELPER: ROBUST MESSAGE PARSER (LINK & FORMATTING) ---
   const parseMessage = (text: string) => {
-    // 1. Split by newlines to handle paragraphs
+    // Regex for: 1. URLs, 2. Emails, 3. Bold (**), 4. Italic (*)
+    const linkRegex = /(\b(?:https?:\/\/|www\.)\S+\b|\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b)/g;
+    const formatRegex = /(\*\*.*?\*\*|\*.*?\*)/g;
+
     const parts = text.split('\n');
     
     return parts.map((part, index) => {
-      if (!part.trim()) return <br key={index} />; // Handle empty lines
+      // Use <p> instead of <br> for new lines to manage spacing better
+      if (!part.trim()) return <p key={index} className="mb-1"></p>; 
 
-      // 2. Bold (**text**) parsing
-      const boldParts = part.split(/(\*\*.*?\*\*)/g);
-      
-      const content = boldParts.map((subPart, subIndex) => {
-        if (subPart.startsWith('**') && subPart.endsWith('**')) {
-          return <strong key={subIndex} className="text-white font-bold">{subPart.slice(2, -2)}</strong>;
+      // 1. Split by links/emails
+      const linkParts = part.split(linkRegex);
+
+      const content = linkParts.map((linkPart, linkIndex) => {
+        const isEmail = linkPart.includes('@') && !linkPart.startsWith('http') && !linkPart.startsWith('www');
+        const isUrl = linkPart.startsWith('http') || linkPart.startsWith('www');
+
+        if (isEmail || isUrl) {
+          let href = linkPart;
+          if (isEmail) href = `mailto:${linkPart}`;
+          if (linkPart.startsWith('www')) href = `https://${linkPart}`;
+
+          return (
+            <a 
+              key={linkIndex} 
+              href={href} 
+              target={isEmail ? '_self' : '_blank'}
+              rel="noopener noreferrer"
+              className="text-blue-300 hover:text-blue-200 underline"
+            >
+              {linkPart}
+            </a>
+          );
         }
-        // Basic italic parsing (*text*)
-        const italicParts = subPart.split(/(\*.*?\*)/g);
-        return italicParts.map((iPart, iIndex) => {
-             if (iPart.startsWith('*') && iPart.endsWith('*')) {
-                return <em key={`${subIndex}-${iIndex}`} className="italic text-slate-300">{iPart.slice(1, -1)}</em>;
-             }
-             return iPart;
+
+        // 2. Split by formatting (Bold/Italic)
+        const formatParts = linkPart.split(formatRegex);
+        
+        return formatParts.map((formatPart, formatIndex) => {
+          if (formatPart.startsWith('**') && formatPart.endsWith('**')) {
+            return <strong key={formatIndex} className="text-white font-bold">{formatPart.slice(2, -2)}</strong>;
+          }
+          if (formatPart.startsWith('*') && formatPart.endsWith('*')) {
+            return <em key={formatIndex} className="italic text-slate-300">{formatPart.slice(1, -1)}</em>;
+          }
+          return formatPart;
         });
       });
 
+      // Added p-tag wrapper here to ensure standard block formatting
       return <p key={index} className="mb-1">{content}</p>;
     });
   };
@@ -178,7 +205,6 @@ export const AssistantBot = () => {
   // --- 1. CRISP LISTENER (THE BRIDGE) ---
   useEffect(() => {
     const handleCrispMessage = (message: any) => {
-        // Only trigger if content exists and it's from operator (YOU)
         if (message && message.content && message.from === 'operator') {
             setMessages(prev => [
                 ...prev, 
@@ -240,7 +266,6 @@ export const AssistantBot = () => {
     const text = textOverride || input;
     if (!text.trim()) return;
 
-    // A. Update UI immediately
     setMessages(prev => [...prev, { id: Date.now(), text, sender: 'user' }]);
     setInput("");
     setIsTyping(true);
@@ -267,7 +292,7 @@ export const AssistantBot = () => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
-                message: text,
+                message: text, 
                 history: conversationHistory 
             })
         });
@@ -275,7 +300,6 @@ export const AssistantBot = () => {
         const data = await response.json();
         const botReply = data.reply;
 
-        // CHECK FOR HANDOFF COMMAND FROM AI
         if (botReply.includes("ACTION_OPEN_CHAT")) {
             setIsLiveChatActive(true);
             setMessages(prev => [...prev, { 
@@ -295,10 +319,6 @@ export const AssistantBot = () => {
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleSendMessage();
-  };
-
   return (
     <>
       {showDialog && dialogContent && (
@@ -312,7 +332,8 @@ export const AssistantBot = () => {
         />
       )}
 
-      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end pointer-events-none">
+      {/* FIXED CONTAINER: High z-index to stay on top */}
+      <div className="fixed bottom-6 right-6 z-[9999] flex flex-col items-end pointer-events-none">
         
         <AnimatePresence>
           {isOpen && (
@@ -321,7 +342,8 @@ export const AssistantBot = () => {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 20, scale: 0.95 }}
               transition={{ type: "spring", bounce: 0.3 }}
-              className="mb-4 w-[90vw] md:w-96 bg-slate-950/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 overflow-hidden pointer-events-auto flex flex-col max-h-[600px]"
+              // FIX: max-h-[80dvh] handles mobile viewport and keyboard better
+              className="mb-4 w-[90vw] md:w-96 bg-slate-950/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 overflow-hidden pointer-events-auto flex flex-col max-h-[80dvh] md:max-h-[600px]"
             >
               {/* Header */}
               <div className={`border-b p-4 flex justify-between items-center transition-colors duration-500 ${isLiveChatActive ? 'bg-indigo-900/40 border-indigo-500/30' : 'bg-slate-900 border-white/5'}`}>
@@ -343,24 +365,16 @@ export const AssistantBot = () => {
                   </div>
                   
                   <div className="flex items-center gap-2">
-                     {isLiveChatActive && (
+                      {isLiveChatActive && (
                         <button 
                             onClick={() => {
-                                // 1. Notify Consultant (You) that the chat is over
                                 try {
                                     Crisp.message.send("text", "[SYSTEM]: User has ended the session.");
-                                    
-                                    // 2. IMPORTANT: Reset the Crisp Session
-                                    // This clears the cookie/token. Next time they chat, it's a NEW conversation.
                                     Crisp.session.reset();
                                 } catch (e) {
                                     console.warn("Could not reset Crisp session");
                                 }
-
-                                // 3. Reset Local UI to AI Mode
                                 setIsLiveChatActive(false);
-                                
-                                // 4. Add a system message to the local UI
                                 setMessages(prev => [...prev, { 
                                     id: Date.now(), 
                                     text: "Live chat ended. Session reset. MIRA AI is back online.", 
@@ -371,14 +385,14 @@ export const AssistantBot = () => {
                         >
                             End Chat
                         </button>
-                    )}
-                     <button onClick={() => setIsOpen(false)} className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors">
+                      )}
+                      <button onClick={() => setIsOpen(false)} className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors">
                         <X size={18} />
-                     </button>
+                      </button>
                   </div>
               </div>
 
-              {/* Tabs (Hidden if Live Chat is active) */}
+              {/* Tabs */}
               {!isLiveChatActive && (
                   <div className="grid grid-cols-3 p-1 bg-slate-900 border-b border-white/5">
                       {['navigator', 'faq', 'chat'].map((m) => (
@@ -391,9 +405,8 @@ export const AssistantBot = () => {
 
               {/* BODY: NAVIGATOR */}
               {mode === 'navigator' && !isLiveChatActive && (
-                  <div className="p-4 space-y-4">
-                       {/* Rotating Ad Banner */}
-                       {showAd && (
+                  <div className="p-4 space-y-4 overflow-y-auto custom-scrollbar">
+                        {showAd && (
                           <div className="relative">
                               <AnimatePresence mode="wait">
                                   <motion.button
@@ -436,7 +449,7 @@ export const AssistantBot = () => {
 
               {/* BODY: FAQ */}
               {mode === 'faq' && !isLiveChatActive && (
-                  <div className="p-4 space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar">
+                  <div className="p-4 space-y-3 overflow-y-auto custom-scrollbar">
                       {currentContext.faqs.map((faq, idx) => (
                           <div key={idx} className="group border border-white/5 rounded-xl overflow-hidden bg-slate-800/20 hover:bg-slate-800/40 transition-colors">
                               <button className="w-full text-left px-4 py-3 text-sm font-medium text-slate-200 flex justify-between items-center" onClick={(e) => { const el = e.currentTarget.nextElementSibling; el?.classList.toggle('hidden'); }}>
@@ -456,7 +469,7 @@ export const AssistantBot = () => {
 
               {/* BODY: CHAT */}
               {(mode === 'chat' || isLiveChatActive) && (
-                  <div className="flex flex-col h-[400px]">
+                  <div className="flex flex-col h-full min-h-0">
                       <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar" ref={scrollRef}>
                           {messages.map((msg) => (
                               <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -466,7 +479,6 @@ export const AssistantBot = () => {
                                       : 'bg-slate-800 text-slate-200 rounded-2xl rounded-tl-sm border border-white/5'
                                   }`}>
                                       {msg.sender === 'human-agent' && <div className="text-[10px] font-bold text-indigo-200 mb-1 uppercase">Consultant</div>}
-                                      {/* USE THE PARSER HERE */}
                                       {parseMessage(msg.text)}
                                   </div>
                               </div>
@@ -489,7 +501,8 @@ export const AssistantBot = () => {
                                 onChange={(e) => setInput(e.target.value)} 
                                 onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} 
                                 placeholder={isLiveChatActive ? "Type to live agent..." : "Ask a question..."}
-                                className="flex-1 bg-slate-950 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:ring-1 focus:ring-blue-500 outline-none placeholder:text-slate-600" 
+                                // FIX: text-base on mobile prevents auto-zoom, md:text-sm keeps desktop size small
+                                className="flex-1 bg-slate-950 border border-white/10 rounded-xl px-4 py-2.5 text-base md:text-sm text-white focus:ring-1 focus:ring-blue-500 outline-none placeholder:text-slate-600" 
                               />
                               <button onClick={() => handleSendMessage()} disabled={!input.trim()} className="p-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-all disabled:opacity-50">
                                   <Send size={18} />

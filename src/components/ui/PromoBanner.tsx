@@ -1,12 +1,11 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ArrowRight, Sparkles, BookOpen, Bot, Layers, BarChart3 } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { LeadCaptureModal } from './LeadCaptureModal';
 
-// --- AD DEFINITIONS ---
-// Different offers for different contexts
+// --- AD DEFINITIONS (Keeping your existing definitions) ---
 const AD_REGISTRY = {
   global: [
     {
@@ -70,62 +69,96 @@ const AD_REGISTRY = {
   ]
 };
 
+// HELPER FUNCTION TO GET DISMISSED IDS
+const getDismissedIds = (): string[] => {
+    if (typeof window !== 'undefined') {
+        const stored = localStorage.getItem('dismissed_ad_ids');
+        return stored ? JSON.parse(stored) : [];
+    }
+    return [];
+};
+
+// HELPER FUNCTION TO SAVE DISMISSED ID
+const saveDismissedId = (id: string) => {
+    if (typeof window !== 'undefined') {
+        const ids = getDismissedIds();
+        if (!ids.includes(id)) {
+            localStorage.setItem('dismissed_ad_ids', JSON.stringify([...ids, id]));
+        }
+    }
+};
+
 export const PromoBanner = () => {
-  // Store an array of active ads
   const [activeAds, setActiveAds] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
-  
-  // Which ad content to show in the modal
   const [modalContent, setModalContent] = useState({ title: "", subtitle: "", subject: "" });
-  
   const pathname = usePathname();
 
-  // --- 1. HANDLE PAGE NAVIGATION ---
-  useEffect(() => {
-    // Reset ads on navigation so they are context-relevant
-    setActiveAds([]);
+  // --- 1. HELPER: REMOVE AD (UPDATED TO USE LOCAL STORAGE) ---
+  const removeAd = useCallback((id: string) => {
+    // 1. Remove from visible UI
+    setActiveAds(prev => prev.filter(ad => ad.id !== id));
+    // 2. Save ID to local storage to prevent future display
+    saveDismissedId(id);
+  }, []);
 
-    // Determine context
-    let contextAds = AD_REGISTRY.global;
-    if (pathname === '/services') contextAds = AD_REGISTRY.services;
-    if (pathname === '/work') contextAds = AD_REGISTRY.work;
-
-    // --- 2. SCHEDULE ADS ---
-    const t1 = setTimeout(() => {
-        addAd(contextAds[0]);
-    }, 4000); // 1st Ad after 4s
-
-    const t2 = setTimeout(() => {
-        addAd(contextAds[1]);
-    }, 12000); // 2nd Ad after 12s
-
-    return () => {
-        clearTimeout(t1);
-        clearTimeout(t2);
-    };
-  }, [pathname]);
-
-  // --- 3. HELPER: ADD AD (With Stack Limit) ---
-  const addAd = (newAd: any) => {
+  // --- 2. HELPER: ADD AD (With Stack Limit) ---
+  const addAd = useCallback((newAd: any) => {
     setActiveAds(prev => {
+        // Check if already exists to avoid dupes
+        if (prev.find(a => a.id === newAd.id)) return prev;
+
         // If already showing 2, remove the oldest (first index) and add new one
         if (prev.length >= 2) {
             const [_, ...rest] = prev;
             return [...rest, newAd];
         }
-        // Check if already exists to avoid dupes
-        if (prev.find(a => a.id === newAd.id)) return prev;
         
         return [...prev, newAd];
     });
-  };
+  }, []);
 
-  // --- 4. HELPER: REMOVE AD ---
-  const removeAd = (id: string) => {
-    setActiveAds(prev => prev.filter(ad => ad.id !== id));
-  };
 
-  // --- 5. HELPER: OPEN MODAL ---
+  // --- 3. HANDLE PAGE NAVIGATION & SCHEDULING (UPDATED TO FILTER) ---
+  useEffect(() => {
+    // Reset visible ads on navigation
+    setActiveAds([]);
+
+    // Get list of IDs the user has dismissed
+    const dismissedIds = getDismissedIds();
+
+    // Determine context and filter out dismissed ads
+    let contextAds = AD_REGISTRY.global;
+    if (pathname === '/services') contextAds = AD_REGISTRY.services;
+    if (pathname === '/work') contextAds = AD_REGISTRY.work;
+    
+    const availableAds = contextAds.filter(ad => !dismissedIds.includes(ad.id));
+
+    // --- SCHEDULE ADS ---
+    let t1: NodeJS.Timeout | undefined;
+    let t2: NodeJS.Timeout | undefined;
+
+    // Schedule 1st Ad (if available)
+    if (availableAds.length > 0) {
+      t1 = setTimeout(() => {
+          addAd(availableAds[0]);
+      }, 4000); // 1st Ad after 4s
+    }
+
+    // Schedule 2nd Ad (if available)
+    if (availableAds.length > 1) {
+      t2 = setTimeout(() => {
+          addAd(availableAds[1]);
+      }, 12000); // 2nd Ad after 12s
+    }
+
+    return () => {
+        if (t1) clearTimeout(t1);
+        if (t2) clearTimeout(t2);
+    };
+  }, [pathname, addAd]); // Dependency on addAd is needed for useCallback
+
+  // --- 4. HELPER: OPEN MODAL ---
   const handleAdClick = (ad: any) => {
     setModalContent({
         title: ad.title,
@@ -143,11 +176,7 @@ export const PromoBanner = () => {
         adContent={modalContent}
       />
 
-      {/* CONTAINER: Fixed Bottom-Left
-          - Flex Col: Stacks items vertically
-          - Justify End: Pushes items to the bottom (so stack grows up)
-          - Gap: Spacing between ads
-      */}
+      {/* CONTAINER: Fixed Bottom-Left */}
       <div className="fixed bottom-6 left-6 z-40 flex flex-col gap-3 max-w-sm w-full pointer-events-none">
         <AnimatePresence mode="popLayout"> 
           {activeAds.map((ad) => (
@@ -167,7 +196,7 @@ export const PromoBanner = () => {
                 
                 <div className="relative bg-slate-950/80 rounded-xl p-4">
                   <button 
-                    onClick={(e) => { e.stopPropagation(); removeAd(ad.id); }}
+                    onClick={(e) => { e.stopPropagation(); removeAd(ad.id); }} // Use the updated removeAd
                     className="absolute top-2 right-2 text-slate-500 hover:text-white transition-colors bg-white/5 hover:bg-white/10 rounded-full p-1 z-10"
                   >
                     <X size={14} />
