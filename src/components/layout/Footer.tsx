@@ -1,10 +1,34 @@
 "use client";
 import React from 'react';
 import { MirabytesLogo } from '../ui/Logo';
-import { Github, Twitter, Linkedin, Mail, ExternalLink } from 'lucide-react';
+import { Github, Twitter, Linkedin, Mail } from 'lucide-react';
 import Link from 'next/link';
 
 export const Footer = () => {
+  // Define social links configuration
+  const socialLinks = [
+    { 
+      icon: Twitter, 
+      href: "https://x.com/mirabytesIO", 
+      label: "Twitter" 
+    },
+    { 
+      icon: Github, 
+      href: "https://github.com/ikenna2245", // Update with your actual Org URL later
+      label: "GitHub" 
+    },
+    { 
+      icon: Linkedin, 
+      href: "https://www.linkedin.com/company/mirabytesIO", 
+      label: "LinkedIn" 
+    },
+    { 
+      icon: Mail, 
+      href: "mailto:info@mirabytes.io", 
+      label: "Email" 
+    }
+  ];
+
   return (
     <footer className="relative border-t border-white/5 bg-slate-950 pt-20 pb-10 overflow-hidden">
         
@@ -15,7 +39,7 @@ export const Footer = () => {
       <div className="max-w-7xl mx-auto px-6 relative z-10">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-12 mb-16">
             
-            {/* Brand Column (Mobile first: Takes full width, good spacing) */}
+            {/* Brand Column */}
             <div className="md:col-span-5 space-y-6">
                 <Link href="/" className="flex items-center gap-3 group w-fit">
                     <div className="relative transition-transform group-hover:scale-110 duration-300">
@@ -29,22 +53,31 @@ export const Footer = () => {
                 <p className="text-slate-400 text-lg leading-relaxed max-w-sm">
                     Architecting the digital future. We replace legacy chaos with precision engineering and scalable cloud infrastructure.
                 </p>
+                
+                {/* Social Icons with Functional Links */}
                 <div className="flex gap-4 pt-2">
-                    {[Twitter, Github, Linkedin, Mail].map((Icon, i) => (
-                        <a key={i} href="#" className="w-10 h-10 rounded-full bg-white/5 border border-white/5 flex items-center justify-center text-slate-400 hover:text-white hover:bg-blue-600 hover:border-blue-500 transition-all duration-300 group shadow-lg hover:shadow-blue-500/20">
-                            <Icon size={18} className="group-hover:scale-110 transition-transform" />
+                    {socialLinks.map((item, i) => (
+                        <a 
+                            key={i} 
+                            href={item.href} 
+                            target={item.icon === Mail ? undefined : "_blank"} // Don't open new tab for mailto
+                            rel={item.icon === Mail ? undefined : "noopener noreferrer"} // Security best practice
+                            aria-label={item.label}
+                            className="w-10 h-10 rounded-full bg-white/5 border border-white/5 flex items-center justify-center text-slate-400 hover:text-white hover:bg-blue-600 hover:border-blue-500 transition-all duration-300 group shadow-lg hover:shadow-blue-500/20"
+                        >
+                            <item.icon size={18} className="group-hover:scale-110 transition-transform" />
                         </a>
                     ))}
                 </div>
             </div>
             
-            {/* Links Columns (Stacked nicely on mobile) */}
+            {/* Links Columns */}
             <div className="md:col-span-2 md:col-start-7 mt-8 md:mt-0">
                 <h4 className="text-white font-bold mb-6 text-sm uppercase tracking-wider flex items-center gap-2">
                     <div className="w-1 h-4 bg-blue-500 rounded-full" /> Company
                 </h4>
                 <ul className="space-y-3 text-slate-400">
-                    {['Company', 'Methodology', 'Careers', 'Contact'].map(item => (
+                    {['Company', 'Methodology', 'Work', 'Contact'].map(item => (
                         <li key={item}>
                             <Link href={`/${item.toLowerCase()}`} className="hover:text-white transition-colors flex items-center gap-2 group w-fit">
                                 <span className="w-0 h-px bg-blue-500 transition-all group-hover:w-3" />
@@ -79,7 +112,6 @@ export const Footer = () => {
                     {['Privacy', 'Terms', 'Security'].map(item => (
                         <li key={item}>
                             <Link 
-                                // Convert the item name to lowercase for the href attribute
                                 href={`/${item.toLowerCase()}`} 
                                 className="hover:text-white transition-colors flex items-center gap-2 group w-fit"
                             >
@@ -92,7 +124,7 @@ export const Footer = () => {
             </div>
         </div>
 
-        {/* Bottom Bar (Copyright and Status) */}
+        {/* Bottom Bar */}
         <div className="flex flex-col md:flex-row justify-between items-center pt-8 border-t border-white/5 text-slate-500 text-sm relative">
             <p className="order-2 md:order-1 mt-4 md:mt-0">© 2025 Mirabytes Inc. All rights reserved.</p>
             
